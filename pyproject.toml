@@ -1,0 +1,230 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel", "pybind11>=2.10"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "kakeya_ai"
+# 版本号单一真源：src/kakeya_ai/version.py（勿在此处写死，避免两处不同步）。
+dynamic = ["version"]
+description = "AI-assisted numerical exploration of the 3D Kakeya conjecture"
+readme = "README.md"
+requires-python = ">=3.10"
+license = "AGPL-3.0-or-later"
+license-files = ["LICENSE"]
+authors = [{ name = "Zhilin Huang", email = "zhangqi@nomingbai.online" }]
+keywords = [
+    "kakeya",
+    "kakeya-conjecture",
+    "computational-geometry",
+    "monte-carlo",
+    "formal-verification",
+    "reproducible-research",
+]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Science/Research",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: C++",
+    "Topic :: Scientific/Engineering :: Mathematics",
+    "Topic :: Scientific/Engineering :: Physics",
+    # 注意：**不要再加 `License ::` 分类器**。依 PEP 639，一旦用 SPDX 表达式
+    # 声明 `license`（本文件上方），再写许可分类器会被构建直接拒绝
+    # （实测报 InvalidConfigError）。许可信息由 `license` + `license-files` 承担。
+]
+
+# ---------------------------------------------------------------------------
+# 依赖
+# ---------------------------------------------------------------------------
+# 这份清单是**按代码事实**列出的（扫描 src/kakeya_ai/ 的全部顶层导入）：
+# 扫描 src/kakeya_ai/ 的全部顶层导入后，核心包真正硬依赖的只有 numpy 与 scipy。
+# requirements.txt 里的 shapely / sympy / mpmath / networkx / pydantic 在核心包中
+# **一处都没用到**（它们属于早期规划或其他子系统），所以不列进 install_requires
+# ——否则会给安装者塞进几个用不上的重依赖。
+dependencies = [
+    "numpy>=1.26",
+    "scipy>=1.12",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.4",
+    "pytest-cov>=5.0",   # 覆盖率门槛由 CI 的 --cov-fail-under=78 施加
+    "ruff>=0.6",
+    # 类型检查（`ruff` 不做类型检查）。**固定下限而非上限**：pyright 的新版本
+    # 偶尔引入新规则，若任其漂移会让 CI 因"新规则"报红而与代码改动无关。
+    # 升级时单独一个 PR，看清刷出什么再决定。配置见仓库根 `pyrightconfig.json`。
+    "pyright>=1.1.414",
+    "build>=1.2",
+    # CI 守门测试要解析 ci.yml（importorskip 在 CI 上不允许 skip）与 pyproject.toml。
+    "pyyaml>=6.0",
+    "tomli>=2.0; python_version < '3.11'",   # tomllib 是 3.11+ 的 stdlib
+]
+
+[project.urls]
+# 仓库尚未设置 git remote，先留占位；发布前替换为真实地址。
+Homepage = "https://example.invalid/kakeya-ai"
+Documentation = "https://example.invalid/kakeya-ai/docs"
+Source = "https://example.invalid/kakeya-ai"
+Issues = "https://example.invalid/kakeya-ai/issues"
+
+[project.scripts]
+# 此前 `scripts/orchestration/kpt.py` 只能靠"在仓库里"运行（脚本自己把 ../src 塞进 sys.path）。
+# 装成包后这些命令随 pip 一起来，不依赖当前工作目录。
+kakeya-kpt = "kakeya_ai.kpt_cli:main"
+
+[tool.setuptools.dynamic]
+version = { attr = "kakeya_ai.version.__version__" }
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+# 类型存根（.pyi）**必须随包分发**：`_tube_kernel` / `_nano_kernel` 是
+# pybind11 编译产物，源码树里没有 Python 实现，静态分析只能靠存根知道
+# 它们有哪些函数。setuptools 的默认包含规则**不含 .pyi**，不显式声明的话
+# 装成包后类型信息会静默丢失——编辑器重新刷出一片"未知导入"。
+[tool.setuptools.package-data]
+kakeya_ai = ["*.pyi", "py.typed"]
+
+# surrogate 权重是训练产物、不随仓库分发；缺失时 proof_orchestrator 自动退回
+# 启发式打分（见 `proof_orchestrator._load_surrogate` 的运行时探测）。
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+# `src`：主包。`scripts`：多个 test_*.py 要 import 脚本模块（kpt_viewer /
+# build_kpt_app / report_experiment_summary 等）。此前只有 `src`，于是那些测试
+# 各自 sys.path.insert(0, "scripts") 兜底——能跑但**Pylance 静态解析不到**
+# （它不执行运行时语句），报「无法解析导入」。两处都列上，既治运行时也治编辑器。
+# `.`：仓库根——`nano/`（芯片模型与纳秒微基准，**刻意不在 src 内**）在此之下，
+# 测试要 `from nano.model.chip_model import ...`。同 `scripts` 的理由：显式列上，
+# 运行时与编辑器同一套判据。
+#
+# 2026-11-06：`scripts/` 按用途拆成 11 个子目录后，**每个子目录都要单列**
+# ——pythonpath 不递归，故只写 "scripts" 会让 `import eval_quality` 这类
+# 扁平导入（脚本模块在 tests 里仍以扁平名被 import）解析不到。
+# 与 pyrightconfig.json 的 extraPaths 保持一致（同一套判据）。
+# `src`：主包。`.`：仓库根——`nano/`（芯片模型与调度器，**刻意不在 src 内**）
+# 在此之下，测试要 `from nano.model.chip_model import ...`。
+# 与 pyrightconfig.json 的 extraPaths 保持一致（同一套判据）。
+pythonpath = [
+    "src",
+    ".",
+]
+# 默认排除 `slow` 用例。**这条与 `markers` 声明缺一不可**：
+# 只声明 marker 而不写 addopts，pytest **会照跑** slow——本项目曾长期如此，
+# 而文档里都写着"默认跳过"，于是文档与事实相反
+# （2026-09-30 发现）。最重的 `test_stress.py` 单独要 281 秒，
+# 而本机资源有限（见 CONTRIBUTING.md 的资源约束），默认必须排除。
+#
+# 要跑 slow：`.venv/bin/python -m pytest tests/xxx.py -m slow`
+addopts = ["-m", "not slow"]
+markers = [
+    "slow: 耗时/重的用例，默认被 addopts 排除；显式 `-m slow` 才跑",
+]
+
+# ---------------------------------------------------------------------------
+# 覆盖率（局限 #16 的 ①：全局门槛）
+# ---------------------------------------------------------------------------
+# **为什么门槛值是 78 而不是 80**：工程基线目标是 80%，
+# 而 2026-10-02 实测全局是 **80%**（9022 条语句，未覆盖 1799）——**正好卡在线上**。
+# 门槛若照抄 80，任何一次小改动（新增一个未测函数、删掉几个测试）都会红，
+# 于是人会开始无视它（"红灯没人看，CI 就失去意义"——ci.yml 里对 deselect 的
+# 同一判据）。取 78 = 留 2 个百分点的余量，仍能拦住**实质退化**。
+#
+# **实测怎么来的**：本机禁止全量测试（见 CONTRIBUTING.md 的资源约束），故用
+# `scripts/measurement/coverage_global.py` **分批累加**（每批 ≤2 文件，41 批）算出。
+# CI 一次性跑全量，两者口径一致（都装 `[dev,all]`，见 ci.yml 的安装步骤）。
+#
+# **门槛只在 CI 生效**：本机跑不了全量，`--cov-fail-under` 在本机分批跑时没有
+# 意义（每批都远低于全局值）。故 CI 用显式命令行参数，此处只放报告配置。
+[tool.coverage.run]
+source = ["src/kakeya_ai"]
+# 分支覆盖率**不开**：开启后基线要重测（分支远多于语句），且本项目大量
+# `if TYPE_CHECKING` / 平台分支在 CI 上走不到——那是环境差异不是缺陷。
+branch = false
+
+[tool.coverage.report]
+# 报告里**不**用 `fail_under`（本机分批跑会让它误判）；门槛由 CI 的
+# `--cov-fail-under=78` 施加。这里只控制显示。
+show_missing = true
+skip_covered = false
+exclude_lines = [
+    "pragma: no cover",
+    "if TYPE_CHECKING:",
+    "raise NotImplementedError",
+    "@overload",
+    "\\.\\.\\.",              # 裸 `...`（Protocol/存根里的空实现）
+    "if __name__ == .__main__.:",
+]
+
+# ---------------------------------------------------------------------------
+# 静态检查（ruff）
+# ---------------------------------------------------------------------------
+# 规则集刻意从宽起步：代码库已有近 2 万行 Python 且此前从未跑过 linter，
+# 一次性开启 UP/E 等风格规则会立刻淹出 700+ 条既有告警，真信号反而被埋。
+# 当前只锁**会掩盖真实缺陷**的几类，其余按需逐步引入——每次加一条并有意
+# 识地清理存量。
+#
+# 已经靠这套规则抓到 4 个真问题（2026-09-17 首跑）：
+#   - tests/test_grains.py 两个同名测试 → 其中一个**从未执行**（F811）
+#   - scripts/docs_build/build_guide_volumes.py 调用从未定义的 split_oversized（F821）
+#   - ai/nesterov_optimizer.py 用了没导入的 Optional（F821）
+#   - sticky_kakeya.py 函数内重复导入 partition_into_rho_tubes（F811）
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+extend-exclude = [
+    ".venv",
+]
+
+[tool.ruff.lint]
+select = [
+    "F",    # Pyflakes：未定义名、未使用导入/变量、重复定义（真 bug 高发区）
+    "E9",   # 语法级错误（其余 E 规则是风格，暂不开）
+    "B905", # zip() 缺 strict=：长度不符时**静默截断**，是静默丢数据的常见来源
+    # —— 2026-10-02 新增（局限 #16 的"静态检查面窄"）——
+    # 扩充原则：**只选能指向真问题的**，不选纯风格。启用前逐条看过命中内容，
+    # 并清掉存量（见下方 ignore 里的逐条说明）。
+    "B",    # bugbear：真 bug 类（B023 闭包延迟绑定 = 本项目已踩过的坑）
+    "RET",  # 返回值一致性（RET503 隐式 return None / RET504 多余赋值）
+    "PIE",  # 无意义的写法（PIE810 startswith 可合并等）
+    "C4",   # comprehension 冗余（C408 无谓的 dict() 调用等）
+]
+ignore = [
+    "E501",   # 行宽交给 formatter；中文注释不该因为换行位置被报错
+    "F541",   # f-string 无占位符：纯风格，且存量 9 处
+    "F401",   # 未使用导入：见下方 per-file-ignores 的说明（按目录分别处理）
+    # —— 以下为新增规则集里**逐条评估后**决定不启用/豁免的项 ——
+    # B007「循环变量未使用」：17 处，全部是 ``for _x in ...`` 形式的**刻意**
+    #   占位（或解包时的槽位）。改名成 ``_`` 是纯风格，且会与"真正的解包
+    #   占位"混淆。**不启用**。
+    "B007",
+    # B028「warnings 缺 stacklevel」：2 处，属于"更好但不必要"——本项目的
+    #   告警是给人看的诊断，栈层级不影响结论。
+    "B028",
+    # RET504「return 前多余赋值」：会让"为了可读性先命名再返回"这种写法报错，
+    #   而本项目大量用带语义的中间变量（那是**特性**不是缺陷）。**不启用**。
+    "RET504",
+]
+
+
+[tool.ruff.lint.per-file-ignores]
+# __init__.py 的导入是**刻意的再导出**（配 __all__ 构成公共 API），
+# 不能按"未使用"删掉——那会把公共 API 一起删了。
+"src/kakeya_ai/__init__.py" = ["F401"]
+# 测试文件：大量使用 fixture 与 importorskip，导入常"看起来没用"。
+"tests/**" = ["F401"]
+# scripts / setup.py 的未使用导入是**存量**。
+# 核心包 src/ 下的同类问题已清理干净，这里不动它们是为了遵守"改动最小化：
+# 不顺手重格式化无关代码"——一次性清理会制造淹没真实改动的巨大 diff。
+# 想清理时执行：ruff check scripts/ setup.py --select F401 --fix
+"scripts/**" = ["F401", "F841"]
+"setup.py" = ["F401"]
+# 隔离基准目录（nano/isolated）是实测脚本，存量大。
+"nano/**" = ["F401", "F841"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["kakeya_ai"]

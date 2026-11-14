@@ -1,0 +1,78 @@
+# CI：测试 / 静态检查。
+#
+# 设计约束（由 tests/tooling/ 的守门钉成契约，改这里前先读它们）：
+# - 平台覆盖：开发平台是 macOS，CI 必须同时覆盖 macos 与 ubuntu
+#   （`test_ci_platform_coverage.py`）；
+# - 成本：macOS runner 计费约 10× ubuntu，故平台与 Python 版本用
+#   `include` 显式配对，不做 os × python-version 笛卡尔积；
+# - `KAKEYA_MARCH` 必须来自矩阵值（ubuntu 用 x86-64-v2 避免绑定构建机
+#   CPU；macOS runner 是 ARM，留空走脚本自身分支）；
+# - 类型检查（pyright）不得 `continue-on-error`
+#   （`test_static_check_gate.py`）；ruff format 是**故意软性**的
+#   （存量代码未统一格式化，硬失败会淹没真问题）。
+
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    name: test (${{ matrix.os }}, py${{ matrix.python-version }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # ubuntu 覆盖 Python 两端（3.10 是 requires-python 下限）。
+          - os: ubuntu-latest
+            python-version: "3.10"
+            march: x86-64-v2
+          # 全局覆盖率门槛只在这一条 leg 施加（见 pyproject [tool.coverage]）。
+          - os: ubuntu-latest
+            python-version: "3.12"
+            march: x86-64-v2
+            coverage: true
+          # macOS 只跑开发机版本，控制计费。
+          - os: macos-latest
+            python-version: "3.12"
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: 构建 C++ 加速内核
+        env:
+          KAKEYA_MARCH: ${{ matrix.march }}
+        run: bash cpp/build_nano.sh
+
+      - name: 安装包与 dev 依赖
+        run: pip install -e .[dev]
+
+      # CI 没有"一次最多两个文件"的本机约束，全量跑。
+      - name: pytest（全量）
+        if: ${{ !matrix.coverage }}
+        run: python -m pytest tests/ -q
+
+      - name: pytest（全量 + 全局覆盖率门槛）
+        if: ${{ matrix.coverage }}
+        run: python -m pytest tests/ -q --cov=src/kakeya_ai --cov-fail-under=78
+
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install -e .[dev]
+      - run: ruff check .
+      # 软性：存量代码从未统一格式化（约 130 个 .py），硬失败会淹没真问题。
+      - name: Ruff format check
+        continue-on-error: true
+        run: ruff format --check .
+      # 硬性：全库基线是 0 errors / 0 warnings，目标就是守住 0。
+      - run: pyright

@@ -1,0 +1,53 @@
+%% 系统的竖直数据流（主链路 + 横向可选优化）
+%% （空行）
+%% 对应本仓库的模块分层：数值主干（primitives → wolff_axioms → grains →
+%% moves → proof_orchestrator → trace_format）与 AI 打分/加速旁路。
+%% （空行）
+%% 语义约定（与原文一致，勿改）：
+%%   - **竖直边**是主干链路，每一步都对应一次真实的数值计算（无占位符）；
+%%   - **虚线横向边**是"可关闭的优化"（加速路径 / AI 打分）——
+%%     关掉任何一条，主干仍能跑通，只是变慢。
+%% 这条"主干 vs 可选"的区分是原文的要点，图上必须看得出来，
+%% 故可选边一律 -. {label} .->（虚线），主干用实线箭头。
+%% （空行）
+%% 本文件即交付物（GitHub / 编辑器直接渲染 mermaid）。需要位图时再导出：
+%%   bash scripts/docs_build/render_diagrams.sh dataflow_main
+%%   （PNG 是可选产物，不入库）
+
+
+flowchart TD
+    tubes["管集输入 (tubes)"]
+
+    tubes --> wolf["wolff_axioms<br/>非聚集条件检查"]
+    wolf --> grains["grains<br/>方向对齐分解"]
+    grains --> moves["moves<br/>Move #1 / #2 / #3"]
+    moves --> orch["proof_orchestrator<br/>证明路径搜索主循环"]
+
+    %% ---- 横向：几何加速（可选）----
+    accel["grains_fast / grains_cpp<br/>同语义加速实现"]
+    accel -.->|"加速（可关）"| grains
+
+    vol["volume / accel<br/>体积校验（三后端）"]
+    vol -.->|"校验（可关）"| moves
+
+    %% ---- 横向：AI 打分（可选）----
+    surr["surrogate_scorer<br/>代理打分器"]
+    router["model_router<br/>级联路由"]
+    surr -.->|"打分（可关）"| orch
+    router -.->|"级联（可关）"| orch
+
+    %% ---- 教学用二维原型（旁路）----
+    oc["orientation_cover<br/>S¹ 弧覆盖下界（二维原型）"]
+    moves -.->|"教学旁路"| oc
+
+    %% ---- 输出与回流 ----
+    orch --> step["ProofStep 轨迹<br/>（.kpt 哈希链）"]
+    step --> td["training_data<br/>蒸馏为训练样本"]
+    td -.->|"再训练"| surr
+    step --> lean["lean_export<br/>导出 Lean 4 命题"]
+
+    %% ---- 样式：主干实线、可选虚线（Mermaid 默认已区分，这里补足对比度）----
+    classDef core fill:#eef4ff,stroke:#3b6fb6,stroke-width:2px;
+    classDef opt fill:#fff7e6,stroke:#c99a2e,stroke-width:1px,stroke-dasharray:4 3;
+    class tubes,wolf,grains,moves,orch,step,td,lean core;
+    class accel,vol,surr,router,oc opt;

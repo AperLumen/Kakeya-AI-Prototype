@@ -1,0 +1,65 @@
+%% Move selection flow: three paths (LLM -> surrogate -> heuristic) + shared gate
+%% .
+%% Corresponds to src/kakeya_ai/proof_orchestrator.py::_select_move.
+%% .
+%% Key facts this diagram must convey (the 2026-09-30 fix):
+%%   1. Condition checks (m1_ok/m2_ok/m3_ok) are computed BEFORE all three
+%%      paths and shared by them;
+%%   2. Any answer from a scorer must pass the _scored_action_allowed gate
+%%      to be adopted — two criteria: "condition already satisfied" and
+%%      "already tried and ineffective in this state";
+%%   3. Being blocked is NOT an error: fall back to the heuristic, but
+%%      record it explicitly in notes (otherwise coverage stats would count
+%%      "answer given but unused" as "effective").
+%% .
+%% Before the fix the first two paths BYPASSED the condition checks
+%% entirely: measured effectiveness of surrogate-chosen Moves was only
+%% 12% (36 no-ops / 5 effective), worse than the heuristic (33%).
+%% .
+%% This file IS the deliverable (GitHub / editors render mermaid directly).
+%% To export a raster image:
+%%   bash scripts/docs_build/render_diagrams.sh move_selection
+%%   (PNG is an optional artifact, not committed)
+
+
+flowchart LR
+    start(["Round start: metrics computed"]) --> cond["Compute the three Move conditions<br/>m1_ok / m2_ok / m3_ok + state fingerprint"]
+
+    cond --> llm{"LLM scorer injected?"}
+    llm -->|"yes"| llm_call["LLM scoring (gap >= threshold)"]
+    llm -->|"no"| surr_q
+
+    llm_call --> llm_ok{"Returned a candidate with gap >= threshold?"}
+    llm_ok -->|"no"| surr_q
+    llm_ok -->|"yes"| gate1{"_scored_action_allowed:<br/>condition unsatisfied AND not tried-ineffective?"}
+    gate1 -->|"yes"| use_llm["Adopt: source = LLM"]
+    gate1 -->|"no"| note_llm["Record in notes: LLM pick blocked by gate"]
+
+    note_llm --> surr_q{"surrogate injected?"}
+    surr_q -->|"no"| heur
+    surr_q -->|"yes"| surr_call["surrogate scoring (gap >= threshold)"]
+
+    surr_call --> surr_ok{"Returned a candidate with gap >= threshold?"}
+    surr_ok -->|"no"| heur
+    surr_ok -->|"yes"| gate2{"_scored_action_allowed: same two criteria?"}
+    gate2 -->|"yes"| use_surr["Adopt: source = SURROGATE"]
+    gate2 -->|"no"| note_surr["Record in notes: surrogate pick blocked by gate"]
+
+    note_surr --> heur["Heuristic fallback: fix whichever condition is worst<br/>+ exclude tried-ineffective ones · source = HEURISTIC"]
+
+    cons["The two criteria of _scored_action_allowed:<br/>1. conditions[action] is True => reject (a Move exists to turn its condition from false to true, so applying it to an already-satisfied condition is necessarily a no-op)<br/>2. _is_known_futile(action, fp) => reject (tried in this state and every metric was bit-identical)"]
+    gate1 -.-> cons
+    gate2 -.-> cons
+
+    use_llm --> done(["Return ProofAction"])
+    use_surr --> done
+    heur --> done
+
+    classDef path fill:#eef4ff,stroke:#3b6fb6,stroke-width:2px;
+    classDef gate fill:#fff4e6,stroke:#c9762e,stroke-width:2px;
+    classDef note fill:#ffeaea,stroke:#b64b4b,stroke-width:1px;
+    classDef fallback fill:#eaf7ee,stroke:#3f8f5c,stroke-width:2px;
+    class cond,llm_call,surr_call path;
+    class gate1,gate2 gate;
+    class note_llm,note_surr,cons note;
+    class heur fallback;

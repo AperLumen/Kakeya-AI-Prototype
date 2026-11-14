@@ -1,0 +1,35 @@
+{
+  // 为什么需要这个文件：仓库此前只在 IDE 设置里配过 extraPaths，而命令行
+  // pyright 与 CI **不读** IDE 配置——于是同一份代码在编辑器里是绿的、
+  // 在 CI 里报"无法解析导入"。把路径固化到仓库级，两边才是同一套判据。
+  //
+  // extraPaths 不递归，故每个被 `import` 的脚本目录都要单列：
+  //   src                     —— src 布局，不给出则 kakeya_ai.* 全部解析不到；
+  //   scripts                 —— 目录本身（PEP 420 命名空间包）；
+  //   scripts/orchestration   —— demo_proof_orchestrator / kpt 等入口；
+  //   scripts/quality         —— 注释语言审计；
+  //   scripts/docs_build      —— 架构图导出脚本。
+  // 与 pyproject 的 [tool.pytest.ini_options] pythonpath 保持同一口径：
+  // 运行时能跑通的 import，静态分析也应能解析。
+  "extraPaths": [
+    "src",
+    "scripts",
+    "scripts/orchestration",
+    "scripts/quality",
+    "scripts/docs_build"
+  ],
+
+  // typeCheckingMode=basic：数值代码刻意不带完整批注，strict 下会刷出成百上千
+  // 条 reportUnknown*（缺批注类噪音，不是真 bug），真信号反而被埋。
+  "typeCheckingMode": "basic",
+
+  // nano/isolated/ 是**独立的基准脚本目录**：运行时把 cpp/ 插进 sys.path 再
+  // import 编译产物（无 .py 无 .pyi），静态分析必然报"无法解析导入"。它有自己
+  // README 记录的运行方式，不属主包范围——故排除，而不是给它造一份假存根。
+  "exclude": [
+    "**/node_modules",
+    "**/__pycache__",
+    "**/.venv",
+    "nano/isolated"
+  ]
+}

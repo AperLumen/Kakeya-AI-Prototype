@@ -1,0 +1,56 @@
+%% Move 选择流程：三条路径（LLM → surrogate → 启发式）+ 共用守卫
+%% （空行）
+%% 对应 src/kakeya_ai/proof_orchestrator.py::_select_move。
+%% （空行）
+%% 这张图要传达的**关键事实**（2026-09-30 的修复）：
+%%   1. 条件检查（m1_ok/m2_ok/m3_ok）在**所有三条路径之前**算，三条共用；
+%%   2. 打分器给的答案必须过 _scored_action_allowed 守卫才被采纳——
+%%      分 "条件已满足" 与 "同状态下试过无效" 两条判据；
+%%   3. 被拦下**不是错误**：退回启发式，但**显式记进 notes**（否则
+%%      覆盖率统计会把"给了答案但没用"算成"生效"）。
+%% （空行）
+%% 修复前，前两条路径**完全绕过**条件检查：实测 surrogate 选出的 Move
+%% 有效率仅 12%（36 次空转 / 5 次有效），比启发式（33%）还差。
+
+
+flowchart LR
+    start(["轮次开始：已算出 metrics"]) --> cond["计算三个 Move 的条件<br/>m1_ok / m2_ok / m3_ok + 状态指纹"]
+
+    cond --> llm{"注入 LLM 打分器？"}
+    llm -->|"是"| llm_call["LLM 打分 (gap ≥ 阈值)"]
+    llm -->|"否"| surr_q
+
+    llm_call --> llm_ok{"给出候选且 gap ≥ 阈值？"}
+    llm_ok -->|"否"| surr_q
+    llm_ok -->|"是"| gate1{"_scored_action_allowed：<br/>条件未满足 且 同状态未试过无效？"}
+    gate1 -->|"是"| use_llm["采纳：来源 = LLM"]
+    gate1 -->|"否"| note_llm["记入 notes：LLM 选的被守卫拦下"]
+
+    note_llm --> surr_q{"注入 surrogate？"}
+    surr_q -->|"否"| heur
+    surr_q -->|"是"| surr_call["surrogate 打分 (gap ≥ 阈值)"]
+
+    surr_call --> surr_ok{"给出候选且 gap ≥ 阈值？"}
+    surr_ok -->|"否"| heur
+    surr_ok -->|"是"| gate2{"_scored_action_allowed：同两条判据？"}
+    gate2 -->|"是"| use_surr["采纳：来源 = SURROGATE"]
+    gate2 -->|"否"| note_surr["记入 notes：surrogate 选的被守卫拦下"]
+
+    note_surr --> heur["启发式兜底：哪个条件差就修哪个<br/>+ 排除同状态试过无效的 · 来源 = HEURISTIC"]
+
+    cons["_scored_action_allowed 的两条判据：<br/>① conditions[action] 为 True ⇒ 拒（对已满足的条件做它必然空转）<br/>② _is_known_futile(action, fp) ⇒ 拒（同状态下试过且指标逐位不变）"]
+    gate1 -.-> cons
+    gate2 -.-> cons
+
+    use_llm --> done(["返回 ProofAction"])
+    use_surr --> done
+    heur --> done
+
+    classDef path fill:#eef4ff,stroke:#3b6fb6,stroke-width:2px;
+    classDef gate fill:#fff4e6,stroke:#c9762e,stroke-width:2px;
+    classDef note fill:#ffeaea,stroke:#b64b4b,stroke-width:1px;
+    classDef fallback fill:#eaf7ee,stroke:#3f8f5c,stroke-width:2px;
+    class cond,llm_call,surr_call path;
+    class gate1,gate2 gate;
+    class note_llm,note_surr,cons note;
+    class heur fallback;

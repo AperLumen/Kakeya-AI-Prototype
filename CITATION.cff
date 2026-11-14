@@ -1,0 +1,42 @@
+cff-version: 1.2.0
+message: "若在学术工作中使用本项目，请按下列信息引用。"
+title: "Kakeya AI：三维挂谷问题的 AI 辅助数值探索系统"
+type: software
+version: 0.3.0
+# 版本号与 src/kakeya_ai/version.py 保持一致；发布时同步更新。
+doi: ""            # TODO(正式发布时)：通过 Zenodo 归档后填入其分配的 DOI
+url: ""            # TODO(正式发布时)：填入公开仓库地址（如 https://github.com/<owner>/<repo>）
+repository-artifact: ""   # TODO(正式发布时)：填入 Zenodo 存档页地址
+abstract: >-
+  基于 Wang–Zahl (2025) 论文《Volume estimates for unions of convex sets, and the
+  Kakeya set conjecture in three dimensions》的可执行、可复核实现：把 δ-管并集体积下界、
+  Wolff 公理检验、grains 分解与 Moves #1–#3 实现为纯函数数值内核，并由本地大模型
+  （Ollama）在方向层提供启发式搜索；所有进入 .kpt 轨迹的定量结论均出自确定性纯函数，
+  可由第三方独立复核。
+keywords:
+  - Kakeya 猜想
+  - 挂谷问题
+  - 管并集体积估计
+  - 形式化验证
+  - 本地大模型推理
+  - 可复现研究
+authors:
+  - family-names: "Huang"
+    given-names: "Zhilin"
+    email: "zhangqi@nomingbai.online"
+    affiliation: ""     # 可选：机构名，便于第三方归属识别
+license: AGPL-3.0-or-later
+# 双许可：学术/非商业场景适用 AGPL-3.0（含第 13 条网络交互条款）；
+# 商业使用需单独授权。详见 LICENSING.md。
+references:
+  - type: article
+    title: "Volume estimates for unions of convex sets, and the Kakeya set conjecture in three dimensions"
+    authors:
+      - family-names: "Wang"
+        given-names: "Hong"
+      - family-names: "Zahl"
+        given-names: "Joshua"
+    year: 2025
+    journal: "arXiv preprint arXiv:2502.17655"
+    url: "https://arxiv.org/abs/2502.17655"
+    notes: "项目理论主线；论文原件请按 arXiv 页面获取（本仓库不含第三方 PDF）"

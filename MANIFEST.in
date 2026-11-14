@@ -1,0 +1,54 @@
+# sdist（源码分发）包含哪些**非 Python**文件。
+#
+# wheel 的内容由 pyproject.toml 决定（[tool.setuptools.data-files] 等）；
+# 本文件只管 sdist。目标是"拿到 .tar.gz 的人能重建出等价的 wheel"。
+#
+# 原则：`pip install <sdist>` 必须能成功编译 C++ 内核，所以 cpp/ 源码必须进包。
+
+include LICENSE
+include LICENSING.md
+include CHANGELOG.md
+include CITATION.cff
+include CONTRIBUTING.md
+include SECURITY.md
+include README.md
+include pyproject.toml
+
+# C++ 内核源码与构建脚本：**必需**——setup.py 要在安装时编译它们。
+# 源文件已按构建路径分 cpp/kernel/ 与 cpp/abi/（2026-11-06 整理），
+# 故用 recursive-include 覆盖两层（旧的 `include cpp/*.cpp` 已匹配不到）。
+recursive-include cpp *.cpp
+recursive-include cpp *.hpp
+recursive-include cpp *.h
+recursive-include cpp *.c
+include cpp/*.sh
+
+# 类型存根与 PEP 561 标记：wheel 侧由 pyproject 的 [tool.setuptools.package-data]
+# 控制，但 sdist 也要带上，否则"从源码包安装"与"从 wheel 安装"的类型信息不一致。
+recursive-include src/kakeya_ai *.pyi
+include src/kakeya_ai/py.typed
+# C ABI 的对外契约与"无 Python"构建入口（2026-09-27 补）。
+# 为什么单独列：递归模式覆盖了 ka_abi.cpp，但 **ka_abi.h / Makefile /
+# test_abi.c 都不匹配 `*.cpp` 模式** —— 缺了它们，拿到 sdist 的人就无法
+# 在无 Python 环境下构建 C ABI，而那正是这层接口存在的理由。
+# 判据：`tar tzf dist/*.tar.gz | grep cpp/` 应能看到这 4 类文件。
+include cpp/abi/ka_abi.h
+include cpp/abi/ka_cli.cpp
+include cpp/abi/test_abi.c
+include cpp/Makefile
+# 几何核心（两条路径共享）。缺它则 pybind11 与 C ABI 都无法编译。
+include cpp/kernel/geo_core.hpp
+
+# 排除构建产物、缓存与本机杂物。setuptools 默认已排除大部分，
+# 这里显式列出容易漏网的几类。
+exclude .DS_Store
+prune tests
+prune docs
+prune scripts
+prune nano
+prune .github
+prune .vscode
+global-exclude *.py[cod]
+global-exclude __pycache__
+global-exclude *.so
+global-exclude *.egg-info

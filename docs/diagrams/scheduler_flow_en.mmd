@@ -1,0 +1,68 @@
+%% Dynamic scheduler: query -> sub-questions -> module/resource -> execution order -> plan
+%% .
+%% Mirrors sections §7 (schedule prediction model) and §8 (dynamic
+%% scheduler) of nano/manifest/architecture_manifest.py — the single source
+%% of truth. Keep in sync with the Chinese source (scheduler_flow.mmd).
+%% .
+%% Semantics (do NOT paraphrase away):
+%%   - SOLID vertical edges are the scheduling MAIN CHAIN: every step is a
+%%     real scheduling decision (no placeholders).
+%%   - The left-hand chip_model / predict_schedule are CONSUMED models
+%%     (bound check, thread-count pick) feeding into plan_query — they are
+%%     inputs, not steps of the main chain; marked by an ORANGE DASHED border
+%%     (vs the blue solid border of the main chain). Edges stay solid: a
+%%     vertical dashed edge renders short dashes that the guard misreads as
+%%     tofu boxes.
+%%   - The top-right expert_router is the DIVISION OF LABOR boundary (routes
+%%     to an LLM expert, i.e. "which model answers" — NOT "which compute
+%%     modules to invoke"); also an orange dashed border to mean "a different
+%%     line, not mixed in".
+%%   - Key fact: the scheduler only PRODUCES A PLAN, never executes
+%%     (execution still goes through accel / the kernels).
+%% .
+%% This file IS the deliverable (GitHub / editors render mermaid directly).
+%% To export a raster image:
+%%   bash scripts/docs_build/render_diagrams.sh scheduler_flow
+%%   (PNG is an optional artifact, not committed)
+%% .
+%% NOTE (wording): the wave node drops the trailing "?" (vs the Chinese "?").
+%% At this diagram's font size the ASCII "?" dot renders as a ~7x6 solid block
+%% (an old PNG-based guard false-positived on it). The diamond shape plus the
+%% yes/no edges already convey the decision.
+
+
+flowchart TD
+    q["Query"]
+
+    q --> dec["decompose_query<br/>split into sub-questions by keyword"]
+    dec --> subs["SubQuestion[]<br/>each tagged with a ModuleKind"]
+
+    subs --> plan["plan_query per sub-question"]
+
+    chip["chip_model<br/>bound check, compute- or bandwidth-bound"]
+    pred["predict_schedule<br/>single-core wall time -> optimal n threads"]
+    chip -->|"consumed, bound check"| plan
+    pred -->|"consumed, thread count"| plan
+
+    plan --> task["TaskPlan<br/>module, engine, threads"]
+
+    task --> order["compute_execution_order<br/>topo layering + core-budget ruling"]
+    order --> wave{"concurrent thread demand<br/>oversubscribes available cores"}
+    wave -->|"yes"| serial["in series"]
+    wave -->|"no"| par["concurrent"]
+
+    out["SchedulePlan<br/>plan only, never runs"]
+    serial --> out
+    par --> out
+
+    expert["expert_router<br/>routes to LLM expert, which model answers"]
+    expert -->|"division of labor, a different line"| q
+
+    classDef core fill:#eef4ff,stroke:#3b6fb6,stroke-width:2px;
+    classDef model fill:#fff7e6,stroke:#c99a2e,stroke-width:1px,stroke-dasharray:4 3;
+    classDef gate fill:#fff4e6,stroke:#c9762e,stroke-width:2px;
+    classDef out fill:#eaf7ee,stroke:#3f8f5c,stroke-width:2px;
+    class q,dec,subs,plan,task,order core;
+    class chip,pred,expert model;
+    class wave gate;
+    class serial,par,out out;

@@ -1,0 +1,57 @@
+%% Vertical data flow of the system (main chain + optional side paths)
+%% .
+%% Mirrors this repo's module layering: the numerical main chain
+%% (primitives -> wolff_axioms -> grains -> moves -> proof_orchestrator ->
+%% trace_format) plus the AI-scoring / acceleration side paths.
+%% .
+%% Semantics (keep in sync with the Chinese source, do NOT paraphrase away):
+%%   - SOLID vertical edges are the main chain. Every step is a real
+%%     numerical computation (no placeholders).
+%%   - DASHED side edges are OPTIONAL optimizations (acceleration / AI
+%%     scoring). Turning any of them off still lets the main chain run —
+%%     just slower, or degraded to the heuristic.
+%% This "main vs optional" split is the point of the diagram, so it must
+%% be visible: optional edges are drawn dashed, main edges solid.
+%% .
+%% This file IS the deliverable (GitHub / editors render mermaid directly).
+%% To export a raster image:
+%%   bash scripts/docs_build/render_diagrams.sh dataflow_main
+%%   (PNG is an optional artifact, not committed)
+
+
+flowchart TD
+    tubes["Tube set input (tubes)"]
+
+    tubes --> wolf["wolff_axioms<br/>non-concentration check"]
+    wolf --> grains["grains<br/>direction-aligned decomposition"]
+    grains --> moves["moves<br/>Move #1 / #2 / #3"]
+    moves --> orch["proof_orchestrator<br/>proof search main loop"]
+
+    %% ---- side: geometric acceleration (optional) ----
+    accel["grains_fast / grains_cpp<br/>same semantics, faster"]
+    accel -.->|"accelerate (optional)"| grains
+
+    vol["volume / accel<br/>volume check (3 backends)"]
+    vol -.->|"verify (optional)"| moves
+
+    %% ---- side: AI scoring (optional) ----
+    surr["surrogate_scorer<br/>surrogate scorer"]
+    router["model_router<br/>cascaded routing"]
+    surr -.->|"score (optional)"| orch
+    router -.->|"cascade (optional)"| orch
+
+    %% ---- teaching 2-D prototype (side path) ----
+    oc["orientation_cover<br/>S¹ arc-cover lower bound (2-D prototype)"]
+    moves -.->|"teaching side path"| oc
+
+    %% ---- outputs and feedback ----
+    orch --> step["ProofStep trace<br/>(.kpt hash chain)"]
+    step --> td["training_data<br/>distilled into training samples"]
+    td -.->|"retrain"| surr
+    step --> lean["lean_export<br/>export Lean 4 statements"]
+
+    %% ---- styling: solid = main, dashed = optional ----
+    classDef core fill:#eef4ff,stroke:#3b6fb6,stroke-width:2px;
+    classDef opt fill:#fff7e6,stroke:#c99a2e,stroke-width:1px,stroke-dasharray:4 3;
+    class tubes,wolf,grains,moves,orch,step,td,lean core;
+    class accel,vol,surr,router,oc opt;

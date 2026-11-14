@@ -1,0 +1,57 @@
+%% ⚠️ 本文件为**生成物**——单一真源：nano/manifest/architecture_manifest.py
+%%    （SCHEDULER_FLOW_* 数据 + render_scheduler_flow_mmd()）。
+%%    改图结构：改清单数据 → .venv/bin/python -m nano.manifest.architecture_manifest
+%%    → 可选导出位图：bash scripts/docs_build/render_diagrams.sh scheduler_flow（PNG 不入库）。
+%%    手改本文件会被 tests/tooling/test_architecture_manifest.py 判红。
+%% 动态调度器：提问 → 子问题 → 模块/资源 → 执行顺序 → 计划
+%% .
+%% 对应本清单的 §7（调度预测模型）与 §8（动态调度器）。
+%% .
+%% 语义约定（与原文一致，勿改）：
+%%   - 竖直实线是**调度主链**：每一步都对应一次真实调度决策（无占位符）；
+%%   - 左侧 chip_model / predict_schedule 是**被消费的模型**（判瓶颈、选线程数），
+%%     是"输入"、不是主链的一步——用**橙色虚线边框**标记（与主链的蓝色实线
+%%     边框区分），边仍为实线（虚线边若竖向，渲染的短划会被守门误判成豆腐块）；
+%%   - 右上 expert_router 是**分工边界**（路由 LLM 专家，决定"用哪个模型回答"，
+%%     不决定"调哪些计算模块"），同样橙色虚线边框示意"另一条线，不混入"。
+%%   - 关键事实：调度器**只产出计划、不执行计算**（执行仍走 accel / 各 kernel）。
+%% .
+%% 可选导出位图：bash scripts/docs_build/render_diagrams.sh scheduler_flow
+%% （PNG 是产物、不入库；GitHub 与编辑器直接渲染本文件的 mermaid 源）
+
+
+flowchart TD
+    q["提问 (query)"]
+
+    q --> dec["decompose_query<br/>关键词拆子问题"]
+    dec --> subs["SubQuestion[]<br/>各带 ModuleKind"]
+
+    subs --> plan["plan_query（逐子问题）"]
+
+    chip["chip_model<br/>判瓶颈：算力 / 带宽受限"]
+    pred["predict_schedule<br/>单核墙钟 -> 最优线程数 n"]
+    chip -->|"消费：判瓶颈"| plan
+    pred -->|"消费：选线程数"| plan
+
+    plan --> task["TaskPlan<br/>模块 + 后端 + 线程数"]
+
+    task --> order["compute_execution_order<br/>拓扑分层 + 核预算裁定"]
+    order --> wave{"并发线程需求<br/>超订可调度核？"}
+    wave -->|"是"| serial["串行（各自满线程，避免超订）"]
+    wave -->|"否"| par["并行 / host 任务可重叠"]
+
+    out["SchedulePlan（只调度、不执行）"]
+    serial --> out
+    par --> out
+
+    expert["expert_router<br/>路由 LLM 专家（用哪个模型回答）"]
+    expert -->|"分工边界：另一条线"| q
+
+    classDef core fill:#eef4ff,stroke:#3b6fb6,stroke-width:2px;
+    classDef model fill:#fff7e6,stroke:#c99a2e,stroke-width:1px,stroke-dasharray:4 3;
+    classDef gate fill:#fff4e6,stroke:#c9762e,stroke-width:2px;
+    classDef out fill:#eaf7ee,stroke:#3f8f5c,stroke-width:2px;
+    class q,dec,subs,plan,task,order core;
+    class chip,pred,expert model;
+    class wave gate;
+    class serial,par,out out;

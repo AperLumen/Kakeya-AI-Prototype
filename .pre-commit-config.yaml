@@ -1,0 +1,9 @@
+# pre-commit 钩子：`pre-commit install` 装上后，提交时自动跑 lint 与格式检查。
+# ruff-format 只对本次改动的文件生效（pass_filenames 默认如此）——存量代码
+# 从未统一格式化，全域强刷会制造淹没真实改动的巨大 diff（见 CONTRIBUTING.md）。
+repos:
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.6.9
+    hooks:
+      - id: ruff
+      - id: ruff-format
