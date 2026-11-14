@@ -10,6 +10,8 @@
 - 混合分解（轴对齐+定向）显式报错，不静默处理。
 """
 
+from typing import Sequence, cast
+
 import numpy as np
 import pytest
 
@@ -60,7 +62,9 @@ def test_split_by_orientation_partitions_and_rejects_mixed():
 def test_merge_oriented_reduces_count_and_covers():
     g = _oriented_grains([[0, 0, 1]], n_per_dir=4, c=0.1)
     before_vol = sum(p.volume for p in g.prisms)
-    merged = _merge_oriented(g.prisms, factor=2)
+    # ``GrainsDecomposition.prisms`` 的声明类型是两类并集，而本用例只造了定向
+    # grain；``cast`` 只存在于类型层面，运行时不转换。
+    merged = _merge_oriented(cast("Sequence[OrientedPrism]", g.prisms), factor=2)
     assert len(merged) == 2
     # 保守覆盖：合并后总体积 ≥ 原体积（盒覆盖必有外扩）。
     assert sum(p.volume for p in merged) >= before_vol * 0.999
@@ -72,7 +76,7 @@ def test_merge_oriented_reduces_count_and_covers():
 def test_merge_oriented_refuses_incompatible_frames():
     # 两个方向差异远大于容差（90°）的簇不得合并。
     g = _oriented_grains([[0, 0, 1], [1, 0, 0]], n_per_dir=1)
-    merged = _merge_oriented(g.prisms, factor=4)
+    merged = _merge_oriented(cast("Sequence[OrientedPrism]", g.prisms), factor=4)
     assert len(merged) == 2  # 一个都合不掉
 
 

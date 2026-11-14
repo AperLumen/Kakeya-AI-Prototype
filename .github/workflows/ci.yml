@@ -44,13 +44,15 @@ jobs:
         with:
           python-version: ${{ matrix.python-version }}
 
+      # 顺序不能反：build_nano.sh 要 import pybind11，而它来自 dev extras
+      # （首次 CI 就栽在这——先构建后安装，三条 leg 全红）。
+      - name: 安装包与 dev 依赖
+        run: pip install -e .[dev]
+
       - name: 构建 C++ 加速内核
         env:
           KAKEYA_MARCH: ${{ matrix.march }}
         run: bash cpp/build_nano.sh
-
-      - name: 安装包与 dev 依赖
-        run: pip install -e .[dev]
 
       # CI 没有"一次最多两个文件"的本机约束，全量跑。
       - name: pytest（全量）

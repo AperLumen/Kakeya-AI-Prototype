@@ -9,7 +9,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import List, Optional, Sequence
+from typing import List, Optional, Sequence, cast
 
 import numpy as np
 
@@ -232,7 +232,7 @@ def _frames_compatible(a: np.ndarray, b: np.ndarray, tol: float = _FRAME_COS_TOL
 
 def _split_by_orientation(
     grains: GrainsDecomposition, where: str
-) -> tuple[list, list]:
+) -> tuple[list[Prism], list[OrientedPrism]]:
     """把分解按 轴对齐/定向 分家；混合分解显式报错（不静默丢掉一类）。
 
     返回 ``(axis_prisms, oriented_prisms)``，至多一个非空。
@@ -446,7 +446,12 @@ def _move1_impl(
     编排器用，而不破坏既有直接调用者。
     """
     axis_prisms, oriented = _split_by_orientation(grains, "Move #1")
-    prisms = axis_prisms or oriented  # 至多一类非空（见 _split_by_orientation）
+    # 两类 grain 的**类型**互不继承（``Prism`` 是世界轴对齐的，``OrientedPrism``
+    # 带局部标架），但本循环对两者完全同构：唯一差别是"调哪个合并函数"。故用一个
+    # 联合类型的局部变量承载，并在分支处 ``cast`` 收窄——``_split_by_orientation``
+    # 保证两者至多一类非空，实际类型与 ``is_oriented`` 始终一致，只是这条推理
+    # 超出类型检查器能自行串起的范围。``cast`` 只存在于类型层面，运行时不转换。
+    prisms: list[Prism] | list[OrientedPrism] = axis_prisms or oriented
     is_oriented = bool(oriented)
     if not prisms:
         return grains, 0
@@ -461,13 +466,21 @@ def _move1_impl(
             break
 
         # 目标值取决于各 bin 内比例最大的那个 grain。
-        target_c = max(_grain_target_c(p, rho, delta, zeta, tube_ratio) for p in prisms)
+        target_c = max(
+            _grain_target_c(cast("Prism", p), rho, delta, zeta, tube_ratio)
+            for p in prisms
+        )
         ratio = target_c / current_max_c if current_max_c > 0 else 1.0
         factor = max(2, min(16, int(np.ceil(ratio))))
 
         # 先在每个 ρ-bin 内部合并。
-        merged = (_merge_oriented(prisms, factor=factor) if is_oriented
-                  else _merge_along_long_axis_per_bin(prisms, factor=factor))
+        merged = (
+            _merge_oriented(cast("Sequence[OrientedPrism]", prisms), factor=factor)
+            if is_oriented
+            else _merge_along_long_axis_per_bin(
+                cast("Sequence[Prism]", prisms), factor=factor
+            )
+        )
         if len(merged) < len(prisms):
             prisms = merged
             current = GrainsDecomposition(prisms)
@@ -480,7 +493,7 @@ def _move1_impl(
         if is_oriented:
             break
         merged = _merge_short_grains_cross_bin(
-            prisms, rho, delta, zeta, tube_ratio, factor
+            cast("Sequence[Prism]", prisms), rho, delta, zeta, tube_ratio, factor
         )
         if len(merged) < len(prisms):
             prisms = merged
@@ -524,7 +537,8 @@ def _move2_impl(
 ) -> tuple[GrainsDecomposition, int]:
     """``move2_replace_square_grains`` 的实现，额外返回合并轮数（同 #1 口径）。"""
     axis_prisms2, oriented2 = _split_by_orientation(grains, "Move #2")
-    prisms = axis_prisms2 or oriented2
+    # 联合类型 + 分支收窄的理由同 ``_move1_impl``。
+    prisms: list[Prism] | list[OrientedPrism] = axis_prisms2 or oriented2
     is_oriented2 = bool(oriented2)
     if not prisms:
         return grains, 0
@@ -541,8 +555,11 @@ def _move2_impl(
         # 依据 rho 差距调整合并因子。
         ratio = current_max_rho / threshold if threshold > 0 else 1.0
         factor = max(2, min(16, int(np.ceil(ratio))))
-        merged = (_merge_oriented(prisms, factor=factor) if is_oriented2
-                  else _merge_along_long_axis(prisms, factor=factor))
+        merged = (
+            _merge_oriented(cast("Sequence[OrientedPrism]", prisms), factor=factor)
+            if is_oriented2
+            else _merge_along_long_axis(cast("Sequence[Prism]", prisms), factor=factor)
+        )
         if len(merged) == len(prisms):
             break
         prisms = merged
@@ -735,7 +752,8 @@ def _move3_impl(
     使 ``count`` 严格下降才算一轮；合不动就 ``break``）。
     """
     axis_prisms3, oriented3 = _split_by_orientation(grains, "Move #3")
-    prisms = axis_prisms3 or oriented3
+    # 联合类型 + 分支收窄的理由同 ``_move1_impl``。
+    prisms: list[Prism] | list[OrientedPrism] = axis_prisms3 or oriented3
     is_oriented3 = bool(oriented3)
     if is_oriented3 and error_mode == "actual":
         # 定向路径 v1：actual 误差重建依赖 Prism(bounds=...) 轴对齐构造。
@@ -786,9 +804,13 @@ def _move3_impl(
         # 依据误差差距调整合并因子。
         ratio = current_error / error_ceiling
         factor = max(2, min(16, int(np.ceil(np.log1p(ratio)))))
-        merged = (_merge_oriented(prisms, factor=factor, transverse=True)
-                  if is_oriented3
-                  else _merge_transverse(prisms, factor=factor))
+        merged = (
+            _merge_oriented(
+                cast("Sequence[OrientedPrism]", prisms), factor=factor, transverse=True
+            )
+            if is_oriented3
+            else _merge_transverse(cast("Sequence[Prism]", prisms), factor=factor)
+        )
         if len(merged) == len(prisms):
             break
         prisms = merged
@@ -798,7 +820,9 @@ def _move3_impl(
             # ``require_tubes`` 蕴含 ``tubes is not None``（见上面的 assert）。
             # mypy/Pylance 无法自己串起这条推理，故在此显式取用。
             assert tubes is not None
-            errors = actual_local_kt_errors(tubes, prisms, grid_n=grid_n, backend=backend)
+            errors = actual_local_kt_errors(
+                tubes, cast("Sequence[Prism]", prisms), grid_n=grid_n, backend=backend
+            )
             prisms = [
                 Prism(
                     bounds=p.bounds,

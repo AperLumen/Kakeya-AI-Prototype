@@ -45,7 +45,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Dict, Optional
 
-from . import allocator, probe
+from . import probe
+from .allocator import DEFAULT_RESERVE_BYTES
 
 __all__ = [
     "AdmissionVerdict",
@@ -59,7 +60,11 @@ __all__ = [
 ]
 
 # 守卫线：复用 allocator 的默认预留（2 GB），保持全库一个口径。
-RESERVE_BYTES = allocator.DEFAULT_RESERVE_BYTES
+# 注意这里**直接导入常量**，不写 ``from . import allocator``：``resource/__init__``
+# 把 ``allocator`` 这个名字同时用于**子模块**与**模块级单例**（``allocator =
+# MemoryAllocator()``），两义之下 ``allocator.DEFAULT_RESERVE_BYTES`` 解析到哪个
+# 取决于导入顺序——静态分析会判成"实例没有这个属性"。显式导入不留歧义。
+RESERVE_BYTES = DEFAULT_RESERVE_BYTES
 # 内存压力阈值：pressure = 1 - available/total，超过即视为吃紧。
 PRESSURE_LIMIT = 0.85
 

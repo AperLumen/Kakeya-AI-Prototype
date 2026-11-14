@@ -59,6 +59,10 @@ dev = [
     # 升级时单独一个 PR，看清刷出什么再决定。配置见仓库根 `pyrightconfig.json`。
     "pyright>=1.1.414",
     "build>=1.2",
+    # 构建 C++ 内核（`bash cpp/build_nano.sh`）要 import pybind11。它虽在
+    # `[build-system].requires` 里，但那只存在于**构建隔离环境**，不进开发环境
+    # ——CI 首次运行时就是"先构建、后安装"，三条 leg 全因 ModuleNotFoundError 红。
+    "pybind11>=2.10",
     # CI 守门测试要解析 ci.yml（importorskip 在 CI 上不允许 skip）与 pyproject.toml。
     "pyyaml>=6.0",
     "tomli>=2.0; python_version < '3.11'",   # tomllib 是 3.11+ 的 stdlib
